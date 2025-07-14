@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>삼각형 슈팅 게임</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #fff;
+      font-family: sans-serif;
+      text-align: center;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background: #222;
+    }
+    .ui {
+      margin-top: 10px;
+    }
+    .ui label {
+      font-size: 16px;
+    }
+    #score {
+      font-size: 20px;
+      margin-right: 20px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>삼각형 슈팅 게임</h2>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+
+<div class="ui">
+  <span id="score">점수: 0</span>
+  <button id="pauseBtn">⏸ 일시정지</button>
+  <label>난이도:
+    <input type="range" id="difficulty" min="1" max="5" value="2">
+  </label>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const player = {
+  x: canvas.width / 2,
+  y: canvas.height / 2,
+  size: 20,
+  angle: 0,
+  hp: 100
+};
+
+let projectiles = [];
+let enemies = [];
+let mouse = { x: canvas.width / 2, y: canvas.height / 2 };
+let score = 0;
+let spawnInterval = 2000;
+let lastSpawn = 0;
+let lastTime = 0;
+let isPaused = false;
+
+// 마우스 움직임
+document.addEventListener("mousemove", (e) => {
+  if (isPaused) return;
+  mouse.x = e.clientX - canvas.offsetLeft;
+  mouse.y = e.clientY - canvas.offsetTop;
+});
+
+// 클릭 시 투사체 발사
+document.addEventListener("click", () => {
+  if (isPaused) return;
+  const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+  projectiles.push({
+    x: player.x,
+    y: player.y,
+    angle: angle,
+    speed: 6
+  });
+});
+
+// 난이도 슬라이더
+const difficultySlider = document.getElementById("difficulty");
+difficultySlider.addEventListener("input", () => {
+  const level = parseInt(difficultySlider.value);
+  spawnInterval = 2500 - level * 400;
+});
+
+// 일시정지 버튼
+const pauseBtn = document.getElementById("pauseBtn");
+pauseBtn.addEventListener("click", () => {
+  isPaused = !isPaused;
+  pauseBtn.textContent = isPaused ? "▶ 재개" : "⏸ 일시정지";
+});
+
+function spawnEnemy() {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 300;
+  enemies.push({
+    x: player.x + Math.cos(angle) * radius,
+    y: player.y + Math.sin(angle) * radius,
+    speed: 1.5 + Math.random(),
+    size: 18
+  });
+}
+
+function update(deltaTime) {
+  player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+
+  for (let p of projectiles) {
+    p.x += Math.cos(p.angle) * p.speed;
+    p.y += Math.sin(p.angle) * p.speed;
+  }
+
+  for (let e of enemies) {
+    const dx = player.x - e.x;
+    const dy = player.y - e.y;
+    const dist = Math.hypot(dx, dy);
+    e.x += (dx / dist) * e.speed;
+    e.y += (dy / dist) * e.speed;
+
+    if (dist < player.size + e.size) {
+      player.hp -= 10;
+      e.hit = true;
+      if (player.hp <= 0) {
+        alert("게임 오버!\n최종 점수: " + score);
+        document.location.reload();
+      }
+    }
+  }
+
+  for (let p of projectiles) {
+    for (let e of enemies) {
+      const dist = Math.hypot(p.x - e.x, p.y - e.y);
+      if (dist < e.size + 4) {
+        e.hit = true;
+        p.hit = true;
+        score += 10;
+      }
+    }
+  }
+
+  projectiles = projectiles.filter(p => !p.hit && p.x >= 0 && p.x <= canvas.width && p.y >= 0 && p.y <= canvas.height);
+  enemies = enemies.filter(e => !e.hit);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.angle);
+  ctx.beginPath();
+  ctx.moveTo(player.size, 0);
+  ctx.lineTo(-player.size * 0.8, -player.size * 0.6);
+  ctx.lineTo(-player.size * 0.8, player.size * 0.6);
+  ctx.closePath();
+  ctx.fillStyle = "#00ffff";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.fillStyle = "#fff";
+  for (let p of projectiles) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "#f00";
+  for (let e of enemies) {
+    ctx.beginPath();
+    ctx.arc(e.x, e.y, e.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "#444";
+  ctx.fillRect(20, 20, 100, 15);
+  ctx.fillStyle = "#0f0";
+  ctx.fillRect(20, 20, player.hp, 15);
+  ctx.strokeStyle = "#fff";
+  ctx.strokeRect(20, 20, 100, 15);
+
+  document.getElementById("score").textContent = "점수: " + score;
+}
+
+function gameLoop(timestamp) {
+  if (!isPaused) {
+    const deltaTime = timestamp - lastTime;
+    lastTime = timestamp;
+
+    if (timestamp - lastSpawn > spawnInterval) {
+      spawnEnemy();
+      lastSpawn = timestamp;
+    }
+
+    update(deltaTime);
+    draw();
+  } else {
+    draw(); // 일시정지 중일 때도 마지막 상태 유지
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+
+</body>
+</html>
